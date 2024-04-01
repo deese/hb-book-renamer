@@ -15,7 +15,22 @@ Run the following command to install dependencies:
 
 
 usage:
-```   hb-book-renamer.py <folder> ```
+```
+usage: hb-book-renamer.py [-h] [-v] [-a EXTENSIONS] folder
+
+HB Book Renamer
+
+positional arguments:
+  folder                input folder path
+
+options:
+  -h, --help            show this help message and exit
+  -v, --verbose         enable verbose mode
+  -a EXTENSIONS, --add-ext EXTENSIONS
+                        Add extra extension to list of valid extensions (e.g. --add-ext cbz to add cbz)
+
+```
+
 
 Tested on Linux and Windows using Python 3.12.
 
