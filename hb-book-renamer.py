@@ -1,6 +1,7 @@
 import sys
 from collections import defaultdict
 from pathlib import Path
+import argparse
 
 import PyPDF2
 from ebooklib import epub
@@ -8,19 +9,22 @@ import mobi_header
 from pathvalidate import sanitize_filename
 import inquirer
 
+
+
 class Manager():
     """ Manager class to handle books."""
     books = defaultdict(dict)
     dispatcher =  {}
     base_dir = None
     verbose = False
+    VALID_EXTENSIONS = ["pdf", "epub", "mobi", "prc"]
 
     def vprint(self, data):
         """ Print data if verbose is enabled."""
         if self.verbose:
             print(data)
 
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, extra_extensions=None):
         self.dispatcher = {
         "pdf": self.get_pdf_metadata,
         "epub": self.get_epub_metadata,
@@ -28,6 +32,9 @@ class Manager():
         "prc": self.get_mobi_metadata
         }
         self.verbose = verbose
+        self.VALID_EXTENSIONS += extra_extensions if extra_extensions else []
+        self.vprint(f"Verbose mode is: {self.verbose}")
+        self.vprint(f"Valid extensions are: {self.VALID_EXTENSIONS}")
 
     def generate_filename(self, title):
         """ Sanitize a filename from a title. """
@@ -81,12 +88,15 @@ class Manager():
     def add_book(self, file):
         """ Add a book to the manager."""
         ext = file.suffix[1:]
+        self.vprint(f"Processing file: {file}")
+
         if ext in self.dispatcher:
             title, author = self.dispatcher[ext](file)
         else:
             title, author = None, None
 
-        self.books[file.stem][ext] = { "title": title, "author": author, "filename": self.generate_filename(title), "original_path": file }
+        if ext in self.VALID_EXTENSIONS:
+            self.books[file.stem][ext] = { "title": title, "author": author, "filename": self.generate_filename(title), "original_path": file }
 
     def prnt(self):
         """ Print the books in the manager."""
@@ -106,38 +116,41 @@ class Manager():
     def prepare_rename(self):
         """ Rename the books in the manager."""
         renames = {}
-
-        for k, v in self.books.items():
-            choices = self.generate_choices(v)
-            if not choices:
-                choices = [
-                    inquirer.Text('filename', message=f"Filename: {k} -  No choices found, please enter a filename"),
-                ]
-            else:
-                choices = [
-                    inquirer.List('filename',
-                      message=f"Filename: {k} - Choose an option",
-                    choices= choices + [ "Enter a custom filename", "Skip"]
-                ),
-                ]
-            answers = inquirer.prompt(choices)
-            while True:
-                if not any(answers['filename'] == n for n in [ "Enter a custom filename", "", "Skip" ]):
-                    print(f"Renaming {k} to {answers['filename']}")
-                    renames[k] = answers['filename']
-                    break
-                if answers['filename'] == "Enter a custom filename":
+        try:
+            for k, v in self.books.items():
+                choices = self.generate_choices(v)
+                if not choices:
                     choices = [
-                        inquirer.Text('filename', message=f"Filename: {k} -  Enter a custom filename"),
+                        inquirer.Text('filename', message=f"Filename: \"{k}\" -  No choices found, please enter a filename"),
                     ]
-                    answers = inquirer.prompt(choices)
-                if answers['filename'] == "Skip":
-                    break
-        ## Now we apply the renames.
-        if len(renames) == 0:
-            print("No renames found.")
-            return
-        self.rename(renames)
+                else:
+                    choices = [
+                        inquirer.List('filename',
+                        message=f"Filename: {k} - Choose an option",
+                        choices= choices + [ "Enter a custom filename", "Skip"]
+                    ),
+                    ]
+                answers = inquirer.prompt(choices, raise_keyboard_interrupt=True)
+                while True:
+                    if not any(answers['filename'] == n for n in [ "Enter a custom filename", "", "Skip" ]):
+                        print(f"Renaming {k} to {answers['filename']}")
+                        renames[k] = answers['filename']
+                        break
+                    if answers['filename'] == "Enter a custom filename":
+                        choices = [
+                            inquirer.Text('filename', message=f"Filename: \"{k}\" -  Enter a custom filename"),
+                        ]
+                        answers = inquirer.prompt(choices, raise_keyboard_interrupt=True)
+                    if answers['filename'] == "Skip":
+                        break
+            ## Now we apply the renames.
+            if len(renames) == 0:
+                print("No renames found.")
+                return
+            self.rename(renames)
+        except KeyboardInterrupt:
+            print("Cancelled by user.")
+            sys.exit(0)
 
     def rename(self, renames):
         """ Rename the books in the manager."""
@@ -176,9 +189,19 @@ class Manager():
 def main():
     """ Main function."""
     mgr = Manager()
-    file = Path(sys.argv[1])
+
+    parser = argparse.ArgumentParser(description='HB Book Renamer')
+    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose mode')
+    parser.add_argument('-a', '--add-ext', action="extend", nargs=1, dest="extensions", help='Add extra extension to list of valid extensions (e.g. --add-ext cbz to add cbz)')
+    parser.add_argument('folder', type=str, help='input folder path')
+    args = parser.parse_args()
+
+    mgr = Manager(verbose=args.verbose, extra_extensions=args.extensions)
+
+    file = Path(args.folder)
     if file.is_dir():
         mgr.set_dir(file)
+
 
 
 if __name__ == "__main__":
