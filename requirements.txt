@@ -1,0 +1,5 @@
+pypdf2
+ebooklib
+mobi-header
+inquirer
+pathvalidate
